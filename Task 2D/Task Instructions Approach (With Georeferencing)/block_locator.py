@@ -27,6 +27,7 @@ from std_msgs.msg import Float64
 from pid_tune.msg import PidTune
 import rospy
 import time
+import csv
 from sensor_msgs.msg import Image
 from sentinel_drone.msg import Geolocation
 
@@ -65,8 +66,11 @@ class Edrone():
 		self.ids = [-1]
 		self.src = "drone.png"
 		self.dest = "georeferenced.tif"
-		self.tif = "task2d.tif"
+		self.tif = "/home/missmessedup/catkin_ws/src/sentinel_drone/sentinel_drone/scripts/task2d.tif"
 		self.finalDest = "crs_updated.tif"
+		self.csv_path = '/home/missmessedup/catkin_ws/src/sentinel_drone/sentinel_drone/scripts/plot.csv'
+		self.data = [['id', 'Longitude', 'Latitude']]
+		
 
 		#Declaring a cmd of message type edrone_msgs and initializing values
 		self.cmd = edrone_msgs()
@@ -216,13 +220,14 @@ class Edrone():
 		# Try to convert the ROS Image message to a CV2 Image
 		bridge = CvBridge()
 		try:
-			self.img = bridge.imgmsg_to_cv2(img_msg, "passthrough")
+			img = bridge.imgmsg_to_cv2(img_msg, "passthrough")
 		except CvBridgeError as e:
 			rospy.logerr("CvBridge Error:")
 
 		if self.search == True:
 			#640*480
 			#Algo for checking if detected object is block, we're looking for:
+			self.img = img.copy()
 			if self.block_detect() == True:
 				if self.found == False:
 					self.lastpoint[0] = self.setpoint[0]
@@ -262,10 +267,9 @@ class Edrone():
 		y = int(sum(detectedy)/len(detectedy))
 		Area = (max(detectedx)-min(detectedx))*(max(detectedy)-min(detectedy))
 
-		self.x = x
-		self.y = y
-
 		if Area > 500 and x <= 500 and x >= 200 and y >= 150 and y <= 350:
+			self.x = x
+			self.y = y
 			return True
 		else:
 			return False
@@ -341,12 +345,11 @@ class Edrone():
 					self.setpoint[0] += (self.x -320)/320
 				if abs(self.y-240) >= 20:
 					self.setpoint[1] += (self.y- 240)/300
-				print("Error:")
 				Errx = self.setpoint[0] - self.drone_position[0]
 				Erry = self.setpoint[1] - self.drone_position[1]
 				#Algo for turning off the camera when block is on the centre of the frame and making it move further...
 				if abs(self.x-320) <= 10 and abs(self.y-240) <= 10:
-					if abs(Erry) <= 0.2 and abs(Erry) <= 0.2:
+					if abs(Errx) <= 0.2 and abs(Erry) <= 0.2:
 						self.found = False
 						self.setpoint[0] = self.lastpoint[0]
 						self.setpoint[1] = self.lastpoint[1]
@@ -360,9 +363,6 @@ class Edrone():
 						cv2.imwrite(self.src,self.img)
 						self.move()
 						print("MOVED AWAY...")
-				else:
-					print(Errx)
-					print(Erry)	
 			else:
 				if self.search == False:
 					self.search = True
@@ -387,14 +387,18 @@ class Edrone():
 	#Publishing Geolocation
 	def geoloc(self):
 		#Creating location object for publishing long and lat
-		#self.img = cv2.imread(self.src,0)
 		if self.block_detect() == True:
+			cv2.imwrite("hi.png",self.img)
 			location = Geolocation()
 			location.objectid = "obj" + str(self.id)
-			long, lat = self.pixel2coord(self.x, self.y, self.finalDest)
-			location.lat = lat
-			location.long = long
+			location.long, location.lat = self.pixel2coord(self.x, self.y, self.finalDest)
 			self.geolocation.publish(location)
+			self.data.append([location.objectid,location.long,location.lat])
+			print("Publishing on geolocation topic...")
+			with open(self.csv_path, 'w', newline='') as csvfile:
+				writer = csv.writer(csvfile)
+				print("Writing data to csv file...")
+				writer.writerows(self.data)
 
 	#Search Algorithm
 	def move(self):
