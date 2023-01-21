@@ -48,7 +48,12 @@ class Edrone():
 	def __init__(self):
 		
 		rospy.init_node('drone_control')	# initializing ros node with name drone_control
-		
+
+
+		#Directory address of files.... Update it before running script... !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+		self.address = "/home/missmessedup/catkin_ws/src/sentinel_drone/sentinel_drone/scripts/"
+		#Update it!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 
 		# This corresponds to your current position of drone. This value must be updated each time in your whycon callback
 		# [x,y,z]
@@ -59,16 +64,19 @@ class Edrone():
 		#whycon marker at the position of the dummy given in the scene. Make the whycon marker associated with position_to_hold dummy renderable and make changes accordingly
 		self.setpoint =  [-9,-9.5,19]
 		self.lastpoint = [0.0, 0.0, 19.0]
+
+
+		#My Variables..........
 		self.found = False
 		self.rtn = False
 		self.search = False
 		self.id = -1
 		self.ids = [-1]
-		self.src = "drone.png"
+		self.src = "drone.jpg"
 		self.dest = "georeferenced.tif"
-		self.tif = "/home/missmessedup/catkin_ws/src/sentinel_drone/sentinel_drone/scripts/task2d.tif"
+		self.tif = self.address + "task2d.tif"
 		self.finalDest = "crs_updated.tif"
-		self.csv_path = '/home/missmessedup/catkin_ws/src/sentinel_drone/sentinel_drone/scripts/plot.csv'
+		self.csv_path = self.address + 'plot.csv'
 		self.data = [['id', 'Longitude', 'Latitude']]
 		
 
@@ -357,7 +365,7 @@ class Edrone():
 						print("SEARCH OFF...")
 						self.id += 1
 						#Updating file names...
-						self.src = "obj" + str(self.id)+ ".png"
+						self.src = "obj" + str(self.id)+ ".jpg"
 						self.dest = "georeferenced_obj" + str(self.id) + ".tif"
 						self.finalDest = "crs_updated_obj" + str(self.id) + ".tif"
 						cv2.imwrite(self.src,self.img)
@@ -388,10 +396,16 @@ class Edrone():
 	def geoloc(self):
 		#Creating location object for publishing long and lat
 		if self.block_detect() == True:
-			cv2.imwrite("hi.png",self.img)
 			location = Geolocation()
 			location.objectid = "obj" + str(self.id)
-			location.long, location.lat = self.pixel2coord(self.x, self.y, self.finalDest)
+			#starting Gdal Library
+			ds = gdal.Open(self.finalDest) # Open tif file
+			# GDAL affine transform parameters, According to gdal documentation xoff/yoff are image left corner, a/e are pixel wight/height and b/d is rotation and is zero if image is north up. 
+			if ds is None:
+				print("Could not open file!")
+				return
+			self.xoff, self.a, self.b, self.yoff, self.d, self.e = ds.GetGeoTransform()
+			location.long, location.lat = self.pixel2coord(self.x, self.y)
 			self.geolocation.publish(location)
 			self.data.append([location.objectid,location.long,location.lat])
 			print("Publishing on geolocation topic...")
@@ -420,15 +434,10 @@ class Edrone():
 				self.setpoint= [0,0,26]
 
 	#Getting Long Lat using GDAL Library
-	def pixel2coord(self, x, y, tif):
-		#starting Gdal Library
-		ds = gdal.Open(tif) # Open tif file
-		# GDAL affine transform parameters, According to gdal documentation xoff/yoff are image left corner, a/e are pixel wight/height and b/d is rotation and is zero if image is north up. 
-		xoff, a, b, yoff, d, e = ds.GetGeoTransform()
-
+	def pixel2coord(self, x, y):
 		"""Returns global pixel from pixel x, y coords"""
-		xp = a * x + b * y + xoff
-		yp = d * x + e * y + yoff
+		xp = self.a * x + self.b * y + self.xoff
+		yp = self.d * x + self.e * y + self.yoff
 		return(xp, yp)  #longitude , #latitude
 
 	#Algorithm for Feature Matching (SIFT) and Georeferencing using GDAL
@@ -436,6 +445,14 @@ class Edrone():
 		#Detecting Features using SIFT Algo
 		img1 = cv2.imread(self.src,0)
 		img2 = cv2.imread(self.tif,0)
+
+		#starting Gdal Library
+		ds = gdal.Open(self.tif) # Open tif file
+		# GDAL affine transform parameters, According to gdal documentation xoff/yoff are image left corner, a/e are pixel wight/height and b/d is rotation and is zero if image is north up. 
+		if ds is None:
+			print("Could not open file!")
+			return
+		self.xoff, self.a, self.b, self.yoff, self.d, self.e = ds.GetGeoTransform()
 
 		sift = cv2.SIFT_create(nfeatures = 500)
 
@@ -463,7 +480,7 @@ class Edrone():
 		#Georeferencing using Subprocess Module and GDAL
 		command = "gdal_translate"
 		for pixel in pixels:
-			x,y = self.pixel2coord(pixel[2],pixel[3], self.tif)
+			x,y = self.pixel2coord(pixel[2],pixel[3])
 			# coord[len(coord) - 1] += pixel2coord(pixel[2],pixel[3])
 			command = command + " -gcp " + str(pixel[0]) + " " + str(pixel[1]) + " " + str(x) + " " + str(y)
 
