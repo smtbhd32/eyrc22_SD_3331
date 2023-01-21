@@ -52,7 +52,7 @@ class Edrone():
         rospy.init_node('drone_control')
 
         # Directory for address of files.... Update it before running script... !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        self.address = "/home/missmessedup/catkin_ws/src/sentinel_drone/sentinel_drone/scripts/Working/"
+        self.address = "/home/missmessedup/catkin_ws/src/sentinel_drone/sentinel_drone/scripts/eyrc22_SD_3331/Working/"
         # Update it!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
         # This corresponds to your current position of drone. This value must be updated each time in your whycon callback
@@ -80,17 +80,6 @@ class Edrone():
 
         # Tell if we are in the middle of the lane, we are loosing the restrictions if true
         self.mid = False 
-
-        # Opening sentinal drone map as image
-        self.map = cv2.imread(self.sentinel_drone_map, 1)
-
-        # starting Gdal Library
-        ds = gdal.Open(self.sentinel_drone_map)  # Open tif file
-        # GDAL affine transform parameters, According to gdal documentation xoff/yoff are image left corner, a/e are pixel wight/height and b/d is rotation and is zero if image is north up.
-        if ds is None:
-            print("Could not open file!")
-            return
-        self.xoff, self.a, self.b, self.yoff, self.d, self.e = ds.GetGeoTransform()
 
         # Declaring a cmd of message type edrone_msgs and initializing values
         self.cmd = edrone_msgs()
@@ -123,6 +112,17 @@ class Edrone():
 
         # # This is the sample time in which you need to run pid. Choose any time which you seem fit. Remember the stimulation step time is 50 ms
         # self.sample_time = 0.060 # in seconds
+
+        # Opening sentinal drone map as image
+        self.map = cv2.imread(self.sentinel_drone_map, 1)
+
+        # starting Gdal Library
+        ds = gdal.Open(self.sentinel_drone_map)  # Open tif file
+        # GDAL affine transform parameters, According to gdal documentation xoff/yoff are image left corner, a/e are pixel wight/height and b/d is rotation and is zero if image is north up.
+        if ds is None:
+            print("Could not open file!")
+            return
+        self.xoff, self.a, self.b, self.yoff, self.d, self.e = ds.GetGeoTransform()
 
         # Publishing /drone_command, /alt_error, /pitch_error, /roll_error
         self.command_pub = rospy.Publisher(
