@@ -51,8 +51,10 @@ class Edrone():
 		# [x_setpoint, y_setpoint, z_setpoint]
 		#whycon marker at the position of the dummy given in the scene. Make the whycon marker associated with position_to_hold dummy renderable and make changes accordingly
 		self.setpoint =  [-9,-9.5,19]
+		self.lastpoint = [0.0, 0.0, 19.0]
 		self.found = False
 		self.rtn = False
+		self.search = False
 
 		#Declaring a cmd of message type edrone_msgs and initializing values
 		self.cmd = edrone_msgs()
@@ -215,34 +217,38 @@ class Edrone():
 		if corners is None:
 			return
 
+		#Getting the corners of yellow object
 		corners = np.int0(corners)
-
 		detectedx = []
 		detectedy = []
 		for corner in corners:
 			x, y = corner.ravel()
 			detectedx.append(x)
 			detectedy.append(y)
-			
+		
+		#Detecting the x and y coordinates of yellow object
 		x = int(sum(detectedx)/len(detectedx))
 		y = int(sum(detectedy)/len(detectedy))
 		self.x = x
 		self.y = y
 		Area = (max(detectedx)-min(detectedx))*(max(detectedy)-min(detectedy))
 		
-
-		if Area > 500 and x <= 600 and x >= 100 and y >= 100 and y <= 400:
-			if self.found == False:
-				self.setpoint[0] = self.drone_position[0]
-				self.setpoint[1] = self.drone_position[1]
-				print("Hurray! Block Found !!!")
-				print("Area:")
-				print(Area)
-				print("x:")
-				print(x)
-				print("y:")
-				print(y)
-			self.found = True
+		#Algo for checking if detected object is block, we're looking for:
+		if self.search == True:
+			if Area > 500 and x <= 500 and x >= 200 and y >= 150 and y <= 350:
+				if self.found == False:
+					self.lastpoint[0] = self.setpoint[0]
+					self.lastpoint[1] = self.setpoint[1]
+					self.setpoint[0] = self.drone_position[0]
+					self.setpoint[1] = self.drone_position[1]
+					print("Hurray! Block Found !!!")
+					print("Area:")
+					print(Area)
+					print("x:")
+					print(x)
+					print("y:")
+					print(y)
+				self.found = True
 			#640*480
 
 
@@ -306,6 +312,7 @@ class Edrone():
 		self.sum_error[1] = self.sum_error[1] + self.error[1]
 		self.sum_error[0] = self.sum_error[0] + self.error[0]
 
+		#Algo for checking if drone reached specified setpoint
 		if abs(self.error[2]) <= 0.2 and abs(self.error[1]) <= 0.2 and abs(self.error[0]) <= 0.2:
 			if self.found == True:
 				if abs(self.x-320) >= 20:
@@ -315,26 +322,27 @@ class Edrone():
 				print("Error:")
 				Errx = self.setpoint[0] - self.drone_position[0]
 				Erry = self.setpoint[1] - self.drone_position[1]
-				print(Errx)
-				print(Erry)
-				if abs(Erry) <= 0.2 and abs(Erry) <= 0.2:
-					self.found == False
-			elif self.rtn == False:
-				if self.setpoint[1] >= 8 and self.setpoint[0] < 9:
-					self.setpoint[0] += 3
-					self.rtn = True
-				elif self.setpoint[1] < 8:
-					self.setpoint[1] += 2
+				#Algo for turning off the camera when block is on the centre of the frame and making it move further...
+				if abs(self.x-320) <= 10 and abs(self.y-240) <= 10:
+					if abs(Erry) <= 0.2 and abs(Erry) <= 0.2:
+						self.found = False
+						self.setpoint[0] = self.lastpoint[0]
+						self.setpoint[1] = self.lastpoint[1]
+						self.search = False
+						print("SEARCH OFF...")
+						self.move()
+						print("MOVED AWAY...")
 				else:
-					self.setpoint= [0,0,26]
-			elif self.rtn == True:
-				if self.setpoint[1] <= -8 and self.setpoint[0] < 9:
-					self.setpoint[0] += 3
-					self.rtn = False
-				elif self.setpoint[1] > -8:
-					self.setpoint[1] -= 2
-				else:
-					self.setpoint= [0,0,26]
+					print(Errx)
+					print(Erry)	
+			else:
+				if self.search == False:
+					self.search = True
+					print("TURNED SEARCH ON")
+				self.move()
+				
+
+			
 
 		
 
@@ -352,6 +360,25 @@ class Edrone():
 		self.pitch_error_pub.publish(self.error[1])
 		self.roll_error_pub.publish(self.error[0])
 		self.geolocation.publish(location)
+
+	#Search Algorithm
+	def move(self):
+		if self.rtn == False and self.found == False:
+			if self.setpoint[1] >= 8 and self.setpoint[0] < 9: #Changing lane
+				self.setpoint[0] += 4.5
+				self.rtn = True
+			elif self.setpoint[1] < 8:
+				self.setpoint[1] += 2
+			else:
+				self.setpoint= [0,0,26]
+		elif self.rtn == True and self.found == False:
+			if self.setpoint[1] <= -8 and self.setpoint[0] < 9: #Changing lane
+				self.setpoint[0] += 4.5
+				self.rtn = False
+			elif self.setpoint[1] > -8: 
+				self.setpoint[1] -= 2.5
+			else:
+				self.setpoint= [0,0,26]
 
 
 
