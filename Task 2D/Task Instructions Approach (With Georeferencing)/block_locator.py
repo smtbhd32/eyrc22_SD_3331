@@ -36,6 +36,12 @@ import cv2
 from cv_bridge import CvBridge, CvBridgeError
 import numpy as np
 
+#Importing for GDAL
+from osgeo import gdal
+import subprocess
+import shlex
+
+
 class Edrone():
 	"""docstring for Edrone"""
 	def __init__(self):
@@ -55,6 +61,11 @@ class Edrone():
 		self.found = False
 		self.rtn = False
 		self.search = False
+		self.id = 0
+		self.src = "drone.png"
+		self.dest = "georeferenced.tif"
+		self.tif = "task2d.tif"
+		self.finalDest = "crs_updated.tif"
 
 		#Declaring a cmd of message type edrone_msgs and initializing values
 		self.cmd = edrone_msgs()
@@ -204,37 +215,37 @@ class Edrone():
 		# Try to convert the ROS Image message to a CV2 Image
 		bridge = CvBridge()
 		try:
-			img = bridge.imgmsg_to_cv2(img_msg, "passthrough")
+			self.img = bridge.imgmsg_to_cv2(img_msg, "passthrough")
 		except CvBridgeError as e:
 			rospy.logerr("CvBridge Error:")
 
-		hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-		lower_ylow = np.array([90, 130, 130])
-		upper_ylow = np.array([100, 255, 255])
-
-		mask = cv2.inRange(hsv, lower_ylow, upper_ylow)
-		corners = cv2.goodFeaturesToTrack(mask, 200, 0.001 , 5)
-		if corners is None:
-			return
-
-		#Getting the corners of yellow object
-		corners = np.int0(corners)
-		detectedx = []
-		detectedy = []
-		for corner in corners:
-			x, y = corner.ravel()
-			detectedx.append(x)
-			detectedy.append(y)
-		
-		#Detecting the x and y coordinates of yellow object
-		x = int(sum(detectedx)/len(detectedx))
-		y = int(sum(detectedy)/len(detectedy))
-		self.x = x
-		self.y = y
-		Area = (max(detectedx)-min(detectedx))*(max(detectedy)-min(detectedy))
-		
-		#Algo for checking if detected object is block, we're looking for:
 		if self.search == True:
+			hsv = cv2.cvtColor(self.img, cv2.COLOR_BGR2HSV)
+			lower_ylow = np.array([90, 130, 130])
+			upper_ylow = np.array([100, 255, 255])
+
+			mask = cv2.inRange(hsv, lower_ylow, upper_ylow)
+			corners = cv2.goodFeaturesToTrack(mask, 200, 0.001 , 5)
+			if corners is None:
+				return
+
+			#Getting the corners of yellow object
+			corners = np.int0(corners)
+			detectedx = []
+			detectedy = []
+			for corner in corners:
+				x, y = corner.ravel()
+				detectedx.append(x)
+				detectedy.append(y)
+			
+			#Detecting the x and y coordinates of yellow object
+			x = int(sum(detectedx)/len(detectedx))
+			y = int(sum(detectedy)/len(detectedy))
+			self.x = x
+			self.y = y
+			Area = (max(detectedx)-min(detectedx))*(max(detectedy)-min(detectedy))
+			
+			#Algo for checking if detected object is block, we're looking for:
 			if Area > 500 and x <= 500 and x >= 200 and y >= 150 and y <= 350:
 				if self.found == False:
 					self.lastpoint[0] = self.setpoint[0]
@@ -250,6 +261,7 @@ class Edrone():
 					print(y)
 				self.found = True
 			#640*480
+			
 
 
 
@@ -330,7 +342,11 @@ class Edrone():
 						self.setpoint[1] = self.lastpoint[1]
 						self.search = False
 						print("SEARCH OFF...")
+						cv2.imwrite("drone.png",self.img)
+						self.id += 1
 						self.move()
+						self.Feature_Matching()
+						self.geoloc()
 						print("MOVED AWAY...")
 				else:
 					print(Errx)
@@ -349,16 +365,21 @@ class Edrone():
 
 
 	#------------------------------------------------------------------------------------------------------------------------
-		#Creating location object for publishing long and lat
-		location = Geolocation()
-		location.lat = -122.155119
-		location.long = 37.433046
-		location.objectid = "obj1"
 		
 		self.command_pub.publish(self.cmd)
 		self.throttle_error_pub.publish(self.error[2])
 		self.pitch_error_pub.publish(self.error[1])
 		self.roll_error_pub.publish(self.error[0])
+		
+
+	#Publishing Geolocation
+	def geoloc(self):
+		#Creating location object for publishing long and lat
+		location = Geolocation()
+		x, y = self.pixel2coord(320, 240, self.finalDest)
+		location.lat = y
+		location.long = x
+		location.objectid = "obj" + str(self.id)
 		self.geolocation.publish(location)
 
 	#Search Algorithm
@@ -379,6 +400,68 @@ class Edrone():
 				self.setpoint[1] -= 2.5
 			else:
 				self.setpoint= [0,0,26]
+
+	#Getting Long Lat using GDAL Library
+	def pixel2coord(self, x, y, tif):
+		#starting Gdal Library
+		ds = gdal.Open(tif) # Open tif file
+		# GDAL affine transform parameters, According to gdal documentation xoff/yoff are image left corner, a/e are pixel wight/height and b/d is rotation and is zero if image is north up. 
+		xoff, a, b, yoff, d, e = ds.GetGeoTransform()
+
+		"""Returns global pixel from pixel x, y coords"""
+		xp = a * x + b * y + xoff
+		yp = d * x + e * y + yoff
+		return(xp, yp)  #longitude , #latitude
+
+	#Algorithm for Feature Matching (SIFT) and Georeferencing using GDAL
+	def Feature_Matching(self):
+		#Detecting Features using SIFT Algo
+		img1 = cv2.imread(self.src,0)
+		img2 = cv2.imread(self.tif,0)
+
+		sift = cv2.SIFT_create(nfeatures = 500)
+
+		kp1, des1 = sift.detectAndCompute(img1,None)
+		kp2, des2 = sift.detectAndCompute(img2,None)
+
+		# imgKp1 = cv2.drawKeypoints(img1,kp1,None)
+		# imgKp2 = cv2.drawKeypoints(img2,kp2,None)
+
+		bf = cv2.BFMatcher()
+		matches = bf.knnMatch(des1, des2, k=2)
+
+		good = []
+		pixels = []
+
+		for i,(m,n) in enumerate(matches):
+			if m.distance < 0.50*n.distance:
+				good.append([m])
+				pixels.append(kp1[i].pt)
+				pixels[len(pixels) - 1] = pixels[len(pixels) - 1] + kp2[i].pt
+				# print(i,kp1[i].pt)
+				# print(i,kp2[i].pt)
+				# print(...)
+		print("Detected Features...")
+		#Georeferencing using Subprocess Module and GDAL
+		command = "gdal_translate"
+		for pixel in pixels:
+			x,y = self.pixel2coord(pixel[2],pixel[3], self.tif)
+			# coord[len(coord) - 1] += pixel2coord(pixel[2],pixel[3])
+			command = command + " -gcp " + str(pixel[0]) + " " + str(pixel[1]) + " " + str(x) + " " + str(y)
+
+		command = command + " -of GTiff " + self.src + " " + self.dest
+
+		subprocess.run(shlex.split(command))
+
+		#Correcting the Coordinate System
+		from_SRS = "EPSG:4326"
+		to_SRS = "EPSG:4326"
+
+		cmd_list = ["gdalwarp","-r", "bilinear", "-s_srs", from_SRS, "-t_srs", to_SRS, "-overwrite", self.dest, self.finalDest]
+
+		subprocess.run(cmd_list)
+
+		
 
 
 
