@@ -1,0 +1,28 @@
+Hi...
+Algorithm used for Feature Detection: SIFT Algorithm
+
+Procedure for getting the longitude and latitude of block:
+1. Firstly detecting the block using block_detect() algo which uses openCV to detect the yellow block... For getting accuracy in detecting the block, we check the area of the block and the block must be in the certain part of the frame to be detected.
+2. After detecting the block, We are turning the search off after taking a photo of block and running the algorithm publish_block_location.
+3. The task of publish_block_location is to get the photo taken, match the the features with task2d.tif file and then using those matching points to generate a transformation matrix (Using RANSAC algo)
+4. The transformation matrix is then used to map points from img1 to img2.
+5. After the mapping of all points, we use the transformation matrix to map the location of block in the sentinel_drone_map.tif (task2d.tif)
+6. Now, we know the pixel location of block in task2d.tif
+7. So, using gdal library we can know the longitude and latitude of the block...
+8. Then the long. and lat. are published on the /geolocation topic and csv file is also updated.
+9. We have also maintained a check on the repetition of same block, which prevent same block lat/long from publishing again and again...
+10. move() function is used for moving throughout the arena, we can say that it's our search algorithm.
+
+Instructions for running the scripts:
+
+Firstly, we will run qgis_display.py... Steps for that:
+1. I'm using CSV method for plotting objects... 
+2. You have to update the directory of block_locator.py file... For that update the address variable in line 7 of qgis_display.py file with updated address...
+3. Open qgis with OpenStreetMap as base layer, recommended coordinate system EPSG:4326
+4. Using Python plugin, run updated Qgis_diaplay.py file....
+
+Secondly, we will run submission file... stepps for that:
+1. You have to update the directory of task2d.tiff file... For that update the self.address variable in line 54 of block_locator.py file with updated address...
+2. Then you are good to go... Run the block_locator.py file using rosrun command...
+
+Warning: All the files must be in same directory to run smoothly
