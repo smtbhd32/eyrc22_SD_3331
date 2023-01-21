@@ -78,6 +78,20 @@ class Edrone():
         self.ylowblk_pixelcoord = [0.0, 0.0]
         self.ylowblk_pixelcoord_tif = [0.0, 0.0]
 
+        # Tell if we are in the middle of the lane, we are loosing the restrictions if true
+        self.mid = False 
+
+        # Opening sentinal drone map as image
+        self.map = cv2.imread(self.sentinel_drone_map, 1)
+
+        # starting Gdal Library
+        ds = gdal.Open(self.sentinel_drone_map)  # Open tif file
+        # GDAL affine transform parameters, According to gdal documentation xoff/yoff are image left corner, a/e are pixel wight/height and b/d is rotation and is zero if image is north up.
+        if ds is None:
+            print("Could not open file!")
+            return
+        self.xoff, self.a, self.b, self.yoff, self.d, self.e = ds.GetGeoTransform()
+
         # Declaring a cmd of message type edrone_msgs and initializing values
         self.cmd = edrone_msgs()
         self.cmd.rcRoll = 1500
@@ -207,27 +221,24 @@ class Edrone():
         except CvBridgeError as e:
             rospy.logerr("CvBridge Error:")
 
+        # Algo for checking if detected object is block, we're looking for:
         if self.search == True:
-            # 640*480
-            # Algo for checking if detected object is block, we're looking for:
-            self.img = img.copy()
-            if self.block_detect() == True:
-                if self.found == False:
-                    self.lastpoint[0] = self.setpoint[0]
-                    self.lastpoint[1] = self.setpoint[1]
-                    self.setpoint[0] = self.drone_position[0]
-                    self.setpoint[1] = self.drone_position[1]
-                    print("HURRAY! Block Found !!!")
-                self.found = True
-        elif self.found == False:
-            if self.id not in self.ids:
-                self.Feature_Matching()
-                self.geoloc()
-                self.ids.append(self.id)
-
+            if self.block_detect(img) == True:
+                self.img = img.copy()
+                self.search = False
+                self.id += 1
+                self.mid = False
+                if self.id not in self.ids:
+                    if (self.publish_block_location() == True):
+                        print("HURRAY! Block Found !!!")
+                        self.ids.append(self.id)
+                        # Turning Search On
+                        self.search = True
+                        return
+            
     # Algo for getting the location of yelloe block
-    def block_detect(self):
-        hsv = cv2.cvtColor(self.img, cv2.COLOR_BGR2HSV)
+    def block_detect(self, img):
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
         lower_ylow = np.array([90, 130, 130])
         upper_ylow = np.array([100, 255, 255])
 
@@ -307,33 +318,11 @@ class Edrone():
         self.sum_error[0] = self.sum_error[0] + self.error[0]
 
         # Algo for checking if drone reached specified setpoint
-        if abs(self.error[2]) <= 0.2 and abs(self.error[1]) <= 0.2 and abs(self.error[0]) <= 0.2:
-            if self.found == True:
-                if abs(self.ylowblk_pixelcoord[0]-320) >= 20:
-                    self.setpoint[0] += (self.ylowblk_pixelcoord[0] - 320)/320
-                if abs(self.ylowblk_pixelcoord[1]-240) >= 20:
-                    self.setpoint[1] += (self.ylowblk_pixelcoord[1] - 240)/300
-                Errx = self.setpoint[0] - self.drone_position[0]
-                Erry = self.setpoint[1] - self.drone_position[1]
-                # Algo for turning off the camera when block is on the centre of the frame and making it move further...
-                if abs(self.ylowblk_pixelcoord[0]-320) <= 10 and abs(self.ylowblk_pixelcoord[1]-240) <= 10:
-                    if abs(Errx) <= 0.2 and abs(Erry) <= 0.2:
-                        self.found = False
-                        self.setpoint[0] = self.lastpoint[0]
-                        self.setpoint[1] = self.lastpoint[1]
-                        self.search = False
-                        print("SEARCH OFF...")
-                        self.id += 1
-                        # Updating file names...
-                        self.img_storage = "obj" + str(self.id) + ".jpg"
-                        cv2.imwrite(self.img_storage, self.img)
-                        self.move()
-                        print("MOVED AWAY...")
-            else:
-                if self.search == False:
-                    self.search = True
-                    print("TURNED SEARCH ON")
-                self.move()
+        if abs(self.error[2]) <= 0.3 and abs(self.error[1]) <= 0.3 and abs(self.error[0]) <= 0.3:
+            self.search = True
+            self.move()
+        elif self.mid == True and abs(self.error[2]) <= 1 and abs(self.error[1]) <= 1 and abs(self.error[0]) <= 1:
+            self.move() # less restrictions in middle of the lane
 
     # ------------------------------------------------------------------------------------------------------------------------
 
@@ -343,62 +332,32 @@ class Edrone():
         self.roll_error_pub.publish(self.error[0])
 
     # Search Algorithm
-
     def move(self):
-        if self.rtn == False and self.found == False:
+        if self.rtn == False:
             if self.setpoint[1] >= 8 and self.setpoint[0] < 9:  # Changing lane
                 self.setpoint[0] += 4.5
                 self.rtn = True
             elif self.setpoint[1] < 8:
-                self.setpoint[1] += 2.5
+                self.setpoint[1] += 10
+                self.mid = True
+                if self.setpoint[1] > 8:
+                    self.setpoint[1] = 8.5
+                    self.mid = False
             else:
                 self.setpoint = [0, 0, 26]
-        elif self.rtn == True and self.found == False:
+        elif self.rtn == True:
             if self.setpoint[1] <= -8 and self.setpoint[0] < 9:  # Changing lane
                 self.setpoint[0] += 4.5
                 self.rtn = False
             elif self.setpoint[1] > -8:
-                self.setpoint[1] -= 2.5
+                self.setpoint[1] -= 10
+                self.mid = True
+                if self.setpoint[1] < -8:
+                    self.setpoint[1] = -8.5
+                    self.mid = False
             else:
                 self.setpoint = [0, 0, 26]
-
-    # Publishing Geolocation
-    def geoloc(self):
-        # Creating location object for publishing long and lat
-        if self.block_detect() == True:
-            location = Geolocation()
-            location.objectid = "obj" + str(self.id)
-
-			# Printing id of the block
-            print("Object ID: {}".format(location.objectid))
-
-            # starting Gdal Library
-            ds = gdal.Open(self.sentinel_drone_map)  # Open tif file
-            # GDAL affine transform parameters, According to gdal documentation xoff/yoff are image left corner, a/e are pixel wight/height and b/d is rotation and is zero if image is north up.
-            if ds is None:
-                print("Could not open file!")
-                return
-            self.xoff, self.a, self.b, self.yoff, self.d, self.e = ds.GetGeoTransform()
-
-			# Getting long and lat
-            location.long, location.lat = self.pixel2coord(self.ylowblk_pixelcoord_tif[0], self.ylowblk_pixelcoord_tif[1])
-
-			# Print the longitude and latitude of the block
-            print("Longitude: {}, Latitude: {}".format(location.long, location.lat))
-            
-			# Appending data to csv file
-            self.data.append([location.objectid, location.long, location.lat])
-
-			# Publishing data
-            print("Publishing on geolocation topic...")
-            self.geolocation.publish(location)
-
-			# Writing data to csv file
-            with open(self.csv_path, 'w', newline='') as csvfile:
-                writer = csv.writer(csvfile)
-                print("Writing data to csv file...")
-                writer.writerows(self.data)
-
+        
     # Getting Long Lat using GDAL Library
     def pixel2coord(self, x, y):
         """Returns global pixel from pixel x, y coords"""
@@ -406,11 +365,11 @@ class Edrone():
         yp = self.d * x + self.e * y + self.yoff
         return (xp, yp)  # longitude , #latitude
 
-    # Algorithm for Feature Matching (SIFT)
-    def Feature_Matching(self):
+    # Algorithm for Feature Matching (SIFT) and then publishing the location of the block
+    def publish_block_location(self):
         # Detecting Features using SIFT Algo
-        img1 = cv2.imread(self.img_storage, 0)
-        img2 = cv2.imread(self.sentinel_drone_map, 0)
+        img1 = self.img
+        img2 = self.map
 
         descriptor = cv2.SIFT_create(2000)
 
@@ -453,11 +412,45 @@ class Edrone():
         x = int(transformed_pixel[0][0][0])
         y = int(transformed_pixel[0][0][1])
 
+        # Print the location of the transformed pixel in the sentinel_drone_map.tif
+        print("Transformed pixel location in sentinel_drone_map.tif: ({}, {})".format(x, y))
+        
+        # Checking if the block is already detected
+        if abs(x - self.ylowblk_pixelcoord_tif[0]) < 100 and abs(y - self.ylowblk_pixelcoord_tif[1]) < 100:
+            self.id -= 1
+            return False
+
         # Storing the transformed pixel coordinates
         self.ylowblk_pixelcoord_tif = [x, y]
 
-        # Print the location of the transformed pixel in the sentinel_drone_map.tif
-        print("Transformed pixel location in sentinel_drone_map.tif: ({}, {})".format(x, y))
+        # Creating location object for publishing long and lat
+        location = Geolocation()
+        location.objectid = "obj" + str(self.id)
+
+		# Printing id of the block
+        print("Object ID: {}".format(location.objectid))
+
+		# Getting long and lat
+        location.long, location.lat = self.pixel2coord(self.ylowblk_pixelcoord_tif[0], self.ylowblk_pixelcoord_tif[1])
+
+		# Print the longitude and latitude of the block
+        print("Longitude: {}, Latitude: {}".format(location.long, location.lat))
+            
+		# Appending data to csv file
+        self.data.append([location.objectid, location.long, location.lat])
+
+		# Publishing data
+        print("Publishing on geolocation topic...")
+        self.geolocation.publish(location)
+
+		# Writing data to csv file
+        with open(self.csv_path, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            print("Writing data to csv file...")
+            writer.writerows(self.data)
+
+        # Everything went well
+        return True
 
 
 if __name__ == '__main__':
