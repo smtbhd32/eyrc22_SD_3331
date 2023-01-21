@@ -51,7 +51,7 @@ class Edrone():
         # initializing ros node with name drone_control
         rospy.init_node('drone_control')
 
-        # Directory address of files.... Update it before running script... !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        # Directory for address of files.... Update it before running script... !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         self.address = "/home/missmessedup/catkin_ws/src/sentinel_drone/sentinel_drone/scripts/Working/"
         # Update it!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -350,7 +350,7 @@ class Edrone():
                 self.setpoint[0] += 4.5
                 self.rtn = True
             elif self.setpoint[1] < 8:
-                self.setpoint[1] += 2
+                self.setpoint[1] += 2.5
             else:
                 self.setpoint = [0, 0, 26]
         elif self.rtn == True and self.found == False:
@@ -406,7 +406,7 @@ class Edrone():
         yp = self.d * x + self.e * y + self.yoff
         return (xp, yp)  # longitude , #latitude
 
-    # Algorithm for Feature Matching (SIFT) and Georeferencing using GDAL
+    # Algorithm for Feature Matching (SIFT)
     def Feature_Matching(self):
         # Detecting Features using SIFT Algo
         img1 = cv2.imread(self.img_storage, 0)
@@ -446,8 +446,7 @@ class Edrone():
         sample_pixel = self.ylowblk_pixelcoord
 
         # Use the transformation matrix to map the sample pixel to the sentinel_drone_map.tif
-        transformed_pixel = cv2.perspectiveTransform(
-            np.array([[sample_pixel]], dtype=np.float32), M)
+        transformed_pixel = cv2.perspectiveTransform(np.array([[sample_pixel]], dtype=np.float32), M)
 
         # The transformed_pixel is a 2x1x2 array, so we can extract the x and y coordinates
         # of the transformed pixel in the sentinel_drone_map.tif
@@ -462,7 +461,7 @@ class Edrone():
 
 
 if __name__ == '__main__':
-    time.sleep(6)
+    time.sleep(3)
     e_drone = Edrone()
     # specify rate in Hz based upon your desired PID sampling time, i.e. if desired sample time is 33ms specify rate as 30Hz
     r = rospy.Rate(30)
