@@ -61,7 +61,8 @@ class Edrone():
 		self.found = False
 		self.rtn = False
 		self.search = False
-		self.id = 0
+		self.id = -1
+		self.ids = [-1]
 		self.src = "drone.png"
 		self.dest = "georeferenced.tif"
 		self.tif = "task2d.tif"
@@ -220,47 +221,56 @@ class Edrone():
 			rospy.logerr("CvBridge Error:")
 
 		if self.search == True:
-			hsv = cv2.cvtColor(self.img, cv2.COLOR_BGR2HSV)
-			lower_ylow = np.array([90, 130, 130])
-			upper_ylow = np.array([100, 255, 255])
-
-			mask = cv2.inRange(hsv, lower_ylow, upper_ylow)
-			corners = cv2.goodFeaturesToTrack(mask, 200, 0.001 , 5)
-			if corners is None:
-				return
-
-			#Getting the corners of yellow object
-			corners = np.int0(corners)
-			detectedx = []
-			detectedy = []
-			for corner in corners:
-				x, y = corner.ravel()
-				detectedx.append(x)
-				detectedy.append(y)
-			
-			#Detecting the x and y coordinates of yellow object
-			x = int(sum(detectedx)/len(detectedx))
-			y = int(sum(detectedy)/len(detectedy))
-			self.x = x
-			self.y = y
-			Area = (max(detectedx)-min(detectedx))*(max(detectedy)-min(detectedy))
-			
+			#640*480
 			#Algo for checking if detected object is block, we're looking for:
-			if Area > 500 and x <= 500 and x >= 200 and y >= 150 and y <= 350:
+			if self.block_detect() == True:
 				if self.found == False:
 					self.lastpoint[0] = self.setpoint[0]
 					self.lastpoint[1] = self.setpoint[1]
 					self.setpoint[0] = self.drone_position[0]
 					self.setpoint[1] = self.drone_position[1]
-					print("Hurray! Block Found !!!")
-					print("Area:")
-					print(Area)
-					print("x:")
-					print(x)
-					print("y:")
-					print(y)
+					print("HURRAY! Block Found !!!")
 				self.found = True
-			#640*480
+		elif self.found == False:
+			if self.id not in self.ids:
+				self.Feature_Matching()
+				self.geoloc()
+				self.ids.append(self.id)
+
+	#Algo for getting the location of yelloe block
+	def block_detect(self):
+		hsv = cv2.cvtColor(self.img, cv2.COLOR_BGR2HSV)
+		lower_ylow = np.array([90, 130, 130])
+		upper_ylow = np.array([100, 255, 255])
+
+		mask = cv2.inRange(hsv, lower_ylow, upper_ylow)
+		corners = cv2.goodFeaturesToTrack(mask, 200, 0.001 , 5)
+		if corners is None:
+			return
+
+		#Getting the corners of yellow object
+		corners = np.int0(corners)
+		detectedx = []
+		detectedy = []
+		for corner in corners:
+			x, y = corner.ravel()
+			detectedx.append(x)
+			detectedy.append(y)
+			
+		#Detecting the x and y coordinates of yellow object
+		x = int(sum(detectedx)/len(detectedx))
+		y = int(sum(detectedy)/len(detectedy))
+		Area = (max(detectedx)-min(detectedx))*(max(detectedy)-min(detectedy))
+
+		self.x = x
+		self.y = y
+
+		if Area > 500 and x <= 500 and x >= 200 and y >= 150 and y <= 350:
+			return True
+		else:
+			return False
+			
+		
 			
 
 
@@ -342,11 +352,13 @@ class Edrone():
 						self.setpoint[1] = self.lastpoint[1]
 						self.search = False
 						print("SEARCH OFF...")
-						cv2.imwrite("drone.png",self.img)
 						self.id += 1
+						#Updating file names...
+						self.src = "obj" + str(self.id)+ ".png"
+						self.dest = "georeferenced_obj" + str(self.id) + ".tif"
+						self.finalDest = "crs_updated_obj" + str(self.id) + ".tif"
+						cv2.imwrite(self.src,self.img)
 						self.move()
-						self.Feature_Matching()
-						self.geoloc()
 						print("MOVED AWAY...")
 				else:
 					print(Errx)
@@ -375,12 +387,14 @@ class Edrone():
 	#Publishing Geolocation
 	def geoloc(self):
 		#Creating location object for publishing long and lat
-		location = Geolocation()
-		x, y = self.pixel2coord(320, 240, self.finalDest)
-		location.lat = y
-		location.long = x
-		location.objectid = "obj" + str(self.id)
-		self.geolocation.publish(location)
+		#self.img = cv2.imread(self.src,0)
+		if self.block_detect() == True:
+			location = Geolocation()
+			location.objectid = "obj" + str(self.id)
+			long, lat = self.pixel2coord(self.x, self.y, self.finalDest)
+			location.lat = lat
+			location.long = long
+			self.geolocation.publish(location)
 
 	#Search Algorithm
 	def move(self):
