@@ -4,7 +4,7 @@ from tkinter import *
 import csv
 
 ## Directory for address of files.... Update it before running script... !!!!!!!!!!!!!!!!!!!!!
-address = "/home/missmessedup/catkin_ws/src/sentinel_drone/sentinel_drone/scripts/Working/"
+address = "/home/alita/catkin_ws/src/sentinel_drone/sentinel_drone/scripts"
 # Update it!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 # Address of the task2d.tif file
