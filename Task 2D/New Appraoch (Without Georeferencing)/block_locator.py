@@ -52,7 +52,7 @@ class Edrone():
         rospy.init_node('drone_control')
 
         # Directory for address of files.... Update it before running script... !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        self.address = "/home/missmessedup/catkin_ws/src/sentinel_drone/sentinel_drone/scripts/eyrc22_SD_3331/Working/"
+        self.address = "/home/alita/catkin_ws/src/sentinel_drone/sentinel_drone/scripts/"
         # Update it!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
         # This corresponds to your current position of drone. This value must be updated each time in your whycon callback
