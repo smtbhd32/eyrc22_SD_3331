@@ -2,6 +2,17 @@
 
 This project was part of the E-Yantra 2022 competition, where I built an autonomous drone that surveys a city and looks for yellow objects. The drone transmits the geolocation of detected objects via a ROS topic. A QGIS script then reads the ROS topic and displays the detected yellow blocks on a city map in real-time.
 
+## Watch Demo
+
+You can watch the demonstration on YouTube by clicking the video below:
+
+<p align="center">
+  <a href="https://youtu.be/TrLvPJrHu5E" target="_blank">
+    <img src="https://github.com/smtbhd32/eyrc22_SD_3331/raw/main/video%20thumbnail.png" alt="Watch the video" width="80%" height="auto" />
+  </a>
+</p>
+
+
 ## Project Overview
 
 The drone receives images of the city from an installed camera. These images are processed to find yellow objects of specific dimensions. If a yellow object is detected, the drone’s image is compared with a city map (in .tif format with geocoordinates). Feature extraction is performed on both the drone's image and the city map using the SIFT (Scale-Invariant Feature Transform) algorithm. A comparison matrix is then created using RANSAC (Random Sample Consensus) to derive the geolocation of the yellow object.
